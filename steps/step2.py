@@ -21,13 +21,15 @@ class Variable:
         self.creator = None
     def set_creator(self,func):
         self.creator = func
-    
     def backward(self):
-        f = self.creator
-        if f is not None:
-            x = f.input
-            x.grad = f.backward(self.grad)
-            x.backward()
+        funcs =[self.creator]
+        while funcs[0] is not None:
+            f = funcs.pop()
+            x, y = f.input ,f.output 
+            x.grad =f.backward(y.grad)
+            print('1')
+            if x.creator is not None:
+                funcs.append(self.creator)
 
 class Function:
     def __call__(self,input):
