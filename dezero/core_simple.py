@@ -61,8 +61,8 @@ class Variable:
         p = str(self.data).replace('\n', '\n'+''*9)  # ndarray转为str 对于换行加9个空格
         return 'variable(' + p + ')'
 
-    def __mul__(self, other):
-        return mul(self, other)
+    # def __mul__(self, other):
+    #     return mul(self, other)
 
     def set_creator(self, func):
         self.creator = func
@@ -191,6 +191,7 @@ class Mul(Function):
 
 
 def mul(x0, x1):
+    x1 = as_array(x1)
     return Mul()(x0, x1)
 
 
@@ -216,10 +217,12 @@ class Sub(Function):
 
 
 def sub(x0, x1):
+    x1 = as_array(x1)
     return Sub()(x0, x1)
 
 
 def rsub(x0, x1):
+    x1 = as_array(x1)
     return Sub()(x1, x0)
 
 
