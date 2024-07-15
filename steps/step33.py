@@ -19,6 +19,20 @@ y = f(x)
 y.backward(create_graph=True)
 print(x.grad)
 gx = x.grad
+# 如果不加cleargrad 新的反向传播在variable上会保留上次的结果
+# retain_grad = False 
 x.cleargrad()
 gx.backward()
 print(x.grad)
+
+
+import dezero.functions as F
+
+x = Variable(np.array(1.0))
+y = F.sin(x)
+y.backward(create_graph=True)
+for i in range(3):
+    gx = x.grad
+    x.cleargrad()
+    gx.backward(create_graph=True)
+    print(x.grad)
