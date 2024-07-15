@@ -108,6 +108,7 @@ class Variable:
             f = funcs.pop()
             gys = [output().grad for output in f.outputs]  # output is weakref
 
+            # 根据enable_backprop的值来 启动或禁止反向传播
             with using_config('enable_backprop', create_graph):
                 gxs = f.backward(*gys)
                 if not isinstance(gxs, tuple):
