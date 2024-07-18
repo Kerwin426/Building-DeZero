@@ -2,7 +2,7 @@ import numpy as np
 from dezero.core import Function
 from dezero.core import as_variable
 from dezero import utils
-
+from dezero import cuda
 
 class Sin(Function):
     def forward(self, x):
@@ -48,6 +48,18 @@ class Tanh(Function):
 def tanh(x):
     return Tanh()(x)
 
+class Exp(Function):
+    def forward(self,x):
+        xp = cuda.get_array_module(x)
+        y = xp.exp()
+        return y
+    def backward(self,gy):
+        y =self.outputs[0]()
+        gx = gy*y
+        return gx
+
+def exp(x):
+    return Exp()(x)
 
 class Reshape(Function):
     def __init__(self, shape):
@@ -93,6 +105,8 @@ def transpose(x, axes=None):
     return Transpose(axes)(x)
 
 # 这个sum是沿着某一个轴算总和
+
+
 class Sum(Function):
     def __init__(self, axis, keepdims):
         self.axis = axis
@@ -113,11 +127,13 @@ class Sum(Function):
 
 
 def sum(x, axis=None, keepdims=False):
-    return Sum()(x)
+    return Sum(axis,keepdims)(x)
 
 # 广播 就是将一个列表复制到指定的shape
 
 # broadcast_to 和sum_to 函数互相依赖
+
+
 class BroadcastTo(Function):
     def __init__(self, shape):
         self.shape = shape
@@ -135,9 +151,11 @@ class BroadcastTo(Function):
 def broadcast_to(x, shape):
     if x.shape == shape:
         return as_variable(x)
-    return BroadcastTo(shape)()
+    return BroadcastTo(shape)(x)
 
 # utils 中的sum_to 函数会求x的元素之和并将结果形状变成shape的形状
+
+
 class SumTo(Function):
     def __init__(self, shape):
         self.shape = shape
@@ -156,3 +174,57 @@ def sum_to(x, shape):
     if x.shape == shape:
         return as_variable(x)
     return SumTo(shape)(x)
+
+# 实现了矩阵的乘法
+class MatMul(Function):
+    def forward(self, x, W):
+        # 调用的是ndarray的dot函数
+        y = x.dot(W)
+        return y
+
+    # 这里的gx gW都是直接推公式，看反向传播x 和W的grad
+    def backward(self, gy):
+        x, W = self.inputs
+        # .T 会自动调用transpose函数
+        gx = matual(gy, W.T)
+        gW = matual(x.T, gy)
+        return gx, gW
+
+
+def matual(x, W):
+    return MatMul()(x, W)
+
+
+# 对于第三方函数，可以继承于Function类 减少中间变量的内存占用
+class MeanSquaredError(Function):
+    def forward(self,x0,x1):
+        diff = x0-x1
+        y = (diff**2).sum()/len(diff)
+        return y 
+    def backward(self,gy):
+        x0 ,x1 = self.inputs
+        diff = x0-x1
+        gx0 = gy*diff*(2./len(diff))
+        gx1 = -gx0
+        return gx0,gx1
+def mean_squared_error(x0,x1):
+    return MeanSquaredError()(x0,x1)
+
+class Linear(Function):
+    def forward(self,x,W,b):
+        y = x.dot(W)
+        if b is not None:
+            y +=b
+        return y
+    def backward(self,gy):
+        x,W,b = self.inputs
+        gb = None if b.data is None else sum_to(gy,b.shape)
+        gx = matual(gy,W.T)
+        gW = matual(x.T,gy)
+        return gx,gW,gb
+def linear(x,W,b=None):
+    return Linear()(x,W,b)
+
+def sigmoid_simple(x):
+    x = as_variable(x)
+    y = 1/(1+exp(-x))
