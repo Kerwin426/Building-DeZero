@@ -165,7 +165,7 @@ class Variable:
         if self.data is not None:
             self.data = dezero.cuda.as_cupy(self.data)
 
-
+# 和Variable类有完全一致的属性，并且可以组合在一起进行计算
 class Parameter(Variable):
     pass
 
