@@ -35,6 +35,22 @@ def cos(x):
     return Cos()(x)
 
 
+class Log(Function):
+    def forward(self, x):
+        xp = cuda.get_array_module(x)
+        y = xp.log(x)
+        return y
+
+    def backward(self, gy):
+        x, = self.inputs
+        gx = gy / x
+        return gx
+
+
+def log(x):
+    return Log()(x)
+
+
 class Tanh(Function):
     def forward(self, x):
         y = np.tanh(x)
@@ -53,7 +69,7 @@ def tanh(x):
 class Exp(Function):
     def forward(self, x):
         xp = cuda.get_array_module(x)
-        y = xp.exp()
+        y = xp.exp(x)
         return y
 
     def backward(self, gy):
@@ -261,3 +277,110 @@ def sigmoid(x):
 def sigmoid_simple(x):
     x = as_variable(x)
     y = 1/(1+exp(-x))
+
+# 切片操作 是为了原封不动的传递数据的一部分
+
+
+class GetItem(Function):
+    def __init__(self, slices):
+        self.slices = slices
+
+    def forward(self, x):
+        y = x[self.slices]
+        return y
+
+    def backward(self, gy):
+        x, = self.inputs
+        f = GetItemGrad(self.slices, x.shape)
+        return f(gy)
+
+
+class GetItemGrad(Function):
+    def __init__(self, slices, in_shape):
+        self.slices = slices
+        self.in_shape = in_shape
+
+    def forward(self, gy):
+        xp = cuda.get_array_module(gy)
+        gx = xp.zeros(self.in_shape, dtype=gy.dtype)
+
+        if xp is np:
+            np.add.at(gx, self.slices, gy)
+        else:
+            xp.scatter_add(gx, self.slices, gy)
+        return gx
+
+    def backward(self, ggx):
+        return get_item(ggx, self.slices)
+
+
+def get_item(x, slices):
+    f = GetItem(slices)
+    return f(x)
+
+
+class Softmax(Function):
+    def __init__(self, axis=1):
+        self.axis = axis
+
+    def forward(self, x):
+        xp = cuda.get_array_module(x)
+        y = x - x.max(axis=self.axis, keepdims=True)
+        y = xp.exp(y)
+        y /= y.sum(axis=self.axis, keepdims=True)
+        return y
+
+    def backward(self, gy):
+        y = self.outputs[0]()
+        gx = y * gy
+        sumdx = gx.sum(axis=self.axis, keepdims=True)
+        gx -= y * sumdx
+        return gx
+
+
+def softmax(x, axis=1):
+    return Softmax(axis)(x)
+
+
+class Clip(Function):
+    def __init__(self, x_min, x_max):
+        self.x_min = x_min
+        self.x_max = x_max
+
+    def forward(self, x):
+        xp = cuda.get_array_module(x)
+        y = xp.clip(x, self.x_min, self.x_max)
+        return y
+
+    def backward(self, gy):
+        x, = self.inputs
+        mask = (x.data >= self.x_min) * (x.data <= self.x_max)
+        gx = gy * mask
+        return gx
+
+
+def clip(x, x_min, x_max):
+    return Clip(x_min, x_max)(x)
+
+
+def softmax_cross_entropy_simple(x, t):
+    # t是训练数据 也就是正确类别的编号
+    x, t = as_variable(x), as_variable(t)
+    N = x.shape[0]
+
+    p = softmax(x)
+    p = clip(p, 1e-15, 1.0)  # 防止log(0) 限制最大最小值
+    log_p = log(p)  # softmax概率的数组
+    # np.arange(N)-->[0,1,2,...,N-1]
+
+    # 提取出对应于训练数据的模型输出[0,t.data[0]][1,t.data[1]...]
+
+    # log_p = [[-0.416553, -1.418106, -2.318287],
+    #      [-2.169846, -0.169846, -3.174802],
+    #      [-1.205579, -1.497579, -0.741579]]
+    # t.data = [0,1,2] 意味着选择[0,0][1,1][2,2]的数据
+    # tlog_p = [-0.416553, -0.169846, -0.741579]
+
+    tlog_p = log_p[np.arange(N), t.data]
+    y = -1*sum(tlog_p)/N
+    return y
