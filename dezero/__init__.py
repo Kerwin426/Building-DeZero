@@ -18,5 +18,6 @@ else:
     import dezero.cuda 
     from dezero.models import Model
     from dezero.layers import Layer
+    import dezero.datasets
 
 setup_variable()

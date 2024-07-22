@@ -10,9 +10,14 @@ from dezero.transforms import Compose, Flatten, ToFloat, Normalize
 
 class Dataset:
     def __init__(self, train=True, transform=None, target_transform=None):
+        # train 区分是训练还是测试
         self.train = train
+        # 数据预处理
+        # transform 对单个数据进行处理 
+        # target_transform 对单个标签进行转换处理
         self.transform = transform
         self.target_transform = target_transform
+        # 如果都是None 那么就原封不动
         if self.transform is None:
             self.transform = lambda x: x
         if self.target_transform is None:
@@ -22,6 +27,7 @@ class Dataset:
         self.label = None
         self.prepare()
 
+    # 定义了通过方括号访问元素时的操作
     def __getitem__(self, index):
         assert np.isscalar(index)
         if self.label is None:
@@ -33,6 +39,7 @@ class Dataset:
     def __len__(self):
         return len(self.data)
 
+    # 对数据具体的实现，继承prepare
     def prepare(self):
         pass
 
@@ -47,7 +54,7 @@ def get_spiral(train=True):
     num_data, num_class, input_dim = 100, 3, 2
     data_size = num_class * num_data
     x = np.zeros((data_size, input_dim), dtype=np.float32)
-    t = np.zeros(data_size, dtype=np.int)
+    t = np.zeros(data_size, dtype=int)
 
     for j in range(num_class):
         for i in range(num_data):
@@ -137,7 +144,7 @@ class CIFAR10(Dataset):
         filepath = get_file(url)
         if self.train:
             self.data = np.empty((50000, 3 * 32 * 32))
-            self.label = np.empty((50000), dtype=np.int)
+            self.label = np.empty((50000), dtype=int)
             for i in range(5):
                 self.data[i * 10000:(i + 1) * 10000] = self._load_data(
                     filepath, i + 1, 'train')
@@ -231,7 +238,7 @@ class CIFAR100(CIFAR10):
     def labels(label_type='fine'):
         coarse_labels = dict(enumerate(['aquatic mammals','fish','flowers','food containers','fruit and vegetables','household electrical device','household furniture','insects','large carnivores','large man-made outdoor things','large natural outdoor scenes','large omnivores and herbivores','medium-sized mammals','non-insect invertebrates','people','reptiles','small mammals','trees','vehicles 1','vehicles 2']))
         fine_labels = []
-        return fine_labels if label_type is 'fine' else coarse_labels
+        return fine_labels if label_type == 'fine' else coarse_labels
 
 
 

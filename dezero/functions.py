@@ -1,6 +1,6 @@
 import numpy as np
-from dezero.core import Function
-from dezero.core import as_variable
+from dezero.core import Function,Variable
+from dezero.core import as_variable,as_array
 from dezero import utils
 from dezero import cuda
 
@@ -384,3 +384,23 @@ def softmax_cross_entropy_simple(x, t):
     tlog_p = log_p[np.arange(N), t.data]
     y = -1*sum(tlog_p)/N
     return y
+
+# 不可微，用来计算正确率(识别精度)
+def accuracy(y,t):
+    y,t = as_variable(y),as_variable(t)
+    pred = y.data.argmax(axis=1).reshape(t.shape)
+    result = (pred == t.data)
+    acc =result.mean()
+    return Variable(as_array(acc))
+
+class ReLU(Function):
+    def forward(self,x):
+        y = np.maximum(x,0.0)
+        return y
+    def backward(self,gy):
+        x, = self.inputs
+        mask = x.data >0
+        gx = gy*mask
+        return gx
+def relu(x):
+    return ReLU()(x)
