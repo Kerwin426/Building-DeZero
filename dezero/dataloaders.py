@@ -1,16 +1,18 @@
 import math
 import random
 import numpy as np
-
+from dezero import cuda
 
 # shuffle 每轮训练是否对数据集进行重排
+# dataloader的作用是从数据集中创建小批量数据
 class DataLoader:
-    def __init__(self,dataset,batch_size,shuffle=True):
+    def __init__(self,dataset,batch_size,shuffle=True,gpu=False):
         self.dataset= dataset
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.data_size = len(dataset)
         self.max_iter = math.ceil(self.data_size/batch_size)
+        self.gpu = gpu
         self.reset()
     
     def reset(self):
@@ -23,6 +25,8 @@ class DataLoader:
     def __iter__(self):
         return self
 
+
+    # 在__next__中创建小批量数据
     def __next__(self):
         if self.iteration>= self.max_iter:
             self.reset()
@@ -30,11 +34,16 @@ class DataLoader:
         i,batch_size = self.iteration,self.batch_size
         batch_index = self.index[i*batch_size:(i+1)*batch_size]
         batch = [self.dataset[i] for i in batch_index]
-        x = np.array([example[0]for example in batch])
-        t = np.array([example[1]for example in batch])
+        xp= cuda.cupy if self.gpu else np
+        x = xp.array([example[0]for example in batch])
+        t = xp.array([example[1]for example in batch])
 
         self.iteration +=1
         return x,t
     
+    def to_cpu(self):
+        self.gpu = False
+    def to_gpu(self):
+        self.gpu = True
     def next(self):
         return self.__next__()

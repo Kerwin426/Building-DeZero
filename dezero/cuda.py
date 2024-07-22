@@ -7,7 +7,7 @@ except ImportError:
     gpu_enable = False
 from dezero import Variable
 
-
+# 对cp.get_array_module函数封装 返回对应的相应模块
 def get_array_module(x):
     """Returns the array module for `x`.
 
@@ -26,7 +26,7 @@ def get_array_module(x):
     xp = cp.get_array_module(x)
     return xp
 
-
+# 将参数转换为Numpy的ndarray
 def as_numpy(x):
     """Convert to `numpy.ndarray`.
 
@@ -45,7 +45,7 @@ def as_numpy(x):
         return x
     return cp.asnumpy(x)
 
-
+# 将参数转换为Cupy的ndarray
 def as_cupy(x):
     """Convert to `cupy.ndarray`.
 

@@ -90,6 +90,7 @@ class Variable:
 
     def backward(self, retain_grad=False, create_graph=False):
         if self.grad is None:
+            # 这里的xp 是np或者cp
             xp = dezero.cuda.get_array_module(self.data)
             # 之前的grad是直接用的ndarray ，现在变成了variable了
             self.grad = Variable(xp.ones_like(self.data))
@@ -157,6 +158,7 @@ class Variable:
     def sum(self, axis=None, keepdims=False):
         return dezero.functions.sum(self, axis, keepdims)
 
+    # Variable 数据GPU和CPU的转换
     def to_cpu(self):
         if self.data is not None:
             self.data = dezero.cuda.as_numpy(self.data)
@@ -175,7 +177,7 @@ def as_variable(obj):
         return obj
     return Variable(obj)
 
-
+# 根据array_module的值来修改as_array的值为numpy 或者cupy
 def as_array(x, array_module=np):
     if np.isscalar(x):
         return array_module.array(x)

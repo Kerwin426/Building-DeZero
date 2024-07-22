@@ -4,8 +4,11 @@ from dezero.core import Parameter
 import weakref
 import dezero.functions as F
 import numpy as np
+from dezero import cuda
+import os
 
 
+# Layer 是 保存参数的类 这些参数继承了Variable的Parameter类
 class Layer:
     def __init__(self):
         self._params = set()
@@ -48,6 +51,45 @@ class Layer:
         for param in self.params():
             # 清除的是上面对象的self.W self.b
             param.cleargrad()
+    
+    def to_cpu(self):
+        for param in self.params():
+            param.to_cpu()
+    def to_gpu(self):
+        for param in self.params():
+            param.to_gpu()
+    # 将parameter 作为一个扁平的、非嵌套的字典取出
+    
+    def __flatten_params(self,params_dict,parent_keys=""):
+        for name in self._params:
+            obj = self.__dict__[name]
+            key = parent_keys +'/' + name if params_dict else name
+            if isinstance(obj,Layer):
+                obj.__flatten_params(params_dict,key)
+            else:
+                params_dict[key] = obj
+    
+    def save_weight(self,path):
+        # savez只能是numpy,所以要确保数据在内存中
+        self.to_cpu()
+
+        params_dict = {}
+        self.__flatten_params(params_dict)
+        # 创建保存ndarray实例的值的字典
+        array_dict ={key:param.data for key ,param in params_dict.items() if param is not None}
+        try:
+            np.savez_compressed(path,**array_dict)
+        except(Exception,KeyboardInterrupt) as e:
+            if os.path.exists(path):
+                os.remove(path)
+            raise
+
+    def load_weights(self,path):
+        npz = np.load(path)
+        params_dict={}
+        self.__flatten_params(params_dict)
+        for key ,param in params_dict.items():
+            param.data = npz[key]        
 
 
 class Linear(Layer):
@@ -67,15 +109,16 @@ class Linear(Layer):
         else:
             self.b = Parameter(np.zeros(out_size, dtype=dtype), name='b')
 
-    def _init_W(self):
+    def _init_W(self,xp=np):
         I, O = self.in_size, self.out_size
-        W_data = np.random.randn(I, O).astype(self.dtype) * np.sqrt(1/I)
+        W_data = xp.random.randn(I, O).astype(self.dtype) * np.sqrt(1/I)
         self.W.data = W_data
 
     def forward(self, x):
         # 推迟self.W.data 的初始化，根据in_size来初始化权重参数
         if self.W.data is None:
             self.in_size = x.shape[1]
-            self._init_W()
+            xp = cuda.get_array_module(x)
+            self._init_W(xp)
         y = F.linear(x, self.W, self.b)
         return y
