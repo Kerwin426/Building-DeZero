@@ -19,5 +19,7 @@ else:
     from dezero.models import Model
     from dezero.layers import Layer
     import dezero.datasets
+    from dezero.core import Config
+    from dezero.core import test_mode
 
 setup_variable()

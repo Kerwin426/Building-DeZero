@@ -4,6 +4,7 @@ import numpy as np
 import urllib.request
 from dezero import cuda
 
+
 def _dot_var(v, verbose=False):
     dot_var = '{} [label="{}", color=orange, style=filled]\n'
 
@@ -14,6 +15,8 @@ def _dot_var(v, verbose=False):
         name += str(v.shape) + ' ' + str(v.dtype)
 
     return dot_var.format(id(v), name)
+
+
 def _dot_func(f):
     dot_func = '{} [label="{}", color=lightblue, style=filled]\n'
     txt = dot_func.format(id(f), f.__class__.__name__)
@@ -24,6 +27,8 @@ def _dot_func(f):
     for y in f.outputs:
         txt += dot_edge.format(id(f), id(y()))
     return txt
+
+
 def get_dot_graph(output, verbose=True):
     txt = ''
     funcs = []
@@ -48,6 +53,7 @@ def get_dot_graph(output, verbose=True):
 
     return 'digraph g {\n' + txt + '}'
 
+
 def plot_dot_graph(output, verbose=True, to_file='graph.png'):
     dot_graph = get_dot_graph(output, verbose)
 
@@ -66,6 +72,7 @@ def plot_dot_graph(output, verbose=True, to_file='graph.png'):
     extension = os.path.splitext(to_file)[1][1:]
     cmd = 'dot {} -T {} -o {}'.format(graph_path, extension, to_file)
     subprocess.run(cmd, shell=True)
+
 
 def reshape_sum_backward(gy, x_shape, axis, keepdims):
     """Reshape gradient appropriately for dezero.functions.sum's backward.
@@ -121,6 +128,8 @@ def sum_to(x, shape):
     return y
 
 # 使得x是一对 如果是int 就变成(x,x)
+
+
 def pair(x):
     if isinstance(x, int):
         return (x, x)
@@ -130,18 +139,23 @@ def pair(x):
     else:
         raise ValueError
 
+
 def show_progress(block_num, block_size, total_size):
     bar_template = "\r[{}] {:.2f}%"
 
     downloaded = block_num * block_size
     p = downloaded / total_size * 100
     i = int(downloaded / total_size * 30)
-    if p >= 100.0: p = 100.0
-    if i >= 30: i = 30
+    if p >= 100.0:
+        p = 100.0
+    if i >= 30:
+        i = 30
     bar = "#" * i + "." * (30 - i)
     print(bar_template.format(bar, p), end='')
 
+
 cache_dir = os.path.join(os.path.expanduser('~'), '.dezero')
+
 
 def get_file(url, file_name=None):
     """Download a file from the `url` if it is not in the cache.
@@ -162,7 +176,7 @@ def get_file(url, file_name=None):
 
     if not os.path.exists(cache_dir):
         os.mkdir(cache_dir)
-    #print(file_path)
+    # print(file_path)
     if os.path.exists(file_path):
         return file_path
 
@@ -177,6 +191,7 @@ def get_file(url, file_name=None):
 
     return file_path
 
+
 def logsumexp(x, axis=1):
     xp = cuda.get_array_module(x)
     m = x.max(axis=axis, keepdims=True)
@@ -186,3 +201,11 @@ def logsumexp(x, axis=1):
     xp.log(s, out=s)
     m += s
     return m
+
+
+def get_conv_outsize(input_size, kernel_size, stride, pad):
+    return (input_size + pad * 2 - kernel_size) // stride + 1
+
+
+def get_deconv_outsize(size, k, s, p):
+    return s * (size - 1) + k - 2 * p

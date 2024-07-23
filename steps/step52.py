@@ -10,7 +10,7 @@ from dezero.dataloaders import DataLoader
 import dezero.datasets
 from dezero.models import MLP
 import dezero.cuda
-
+import numpy as np  
 
 max_epoch = 5
 batch_size = 10000
@@ -22,6 +22,8 @@ optimizer = optimizers.Adam().setup(model)
 
 # GPU mode gpu3s cpu 8s
 # dezero.cuda.gpu_enable =False
+npz = np.load('my_mlp.npz')
+print(npz.files)
 if os.path.exists('my_mlp.npz'):
     model.load_weights('my_mlp.npz')
 
