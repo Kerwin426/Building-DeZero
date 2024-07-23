@@ -6,6 +6,7 @@ from dezero import cuda
 import dezero
 
 
+
 class Sin(Function):
     def forward(self, x):
         xp = cuda.get_array_module(x)
@@ -241,7 +242,7 @@ class MeanSquaredError(Function):
 def mean_squared_error(x0, x1):
     return MeanSquaredError()(x0, x1)
 
-
+# 线性乘积加偏置
 class Linear(Function):
     def forward(self, x, W, b):
         y = x.dot(W)

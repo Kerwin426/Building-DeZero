@@ -21,5 +21,6 @@ else:
     import dezero.datasets
     from dezero.core import Config
     from dezero.core import test_mode
+    import dezero.functions_conv
 
 setup_variable()
