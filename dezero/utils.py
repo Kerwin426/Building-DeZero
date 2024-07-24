@@ -154,7 +154,7 @@ def show_progress(block_num, block_size, total_size):
     print(bar_template.format(bar, p), end='')
 
 
-cache_dir = os.path.join(os.path.expanduser('~'), '.dezero')
+cache_dir = os.path.join('E:/DeZero/cache')
 
 
 def get_file(url, file_name=None):
