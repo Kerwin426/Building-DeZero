@@ -10,6 +10,8 @@ from dezero.utils import pair
 import dezero.functions_conv
 
 # Layer 是 保存参数的类 这些参数继承了Variable的Parameter类
+
+
 class Layer:
     def __init__(self):
         self._params = set()
@@ -52,45 +54,47 @@ class Layer:
         for param in self.params():
             # 清除的是上面对象的self.W self.b
             param.cleargrad()
-    
+
     def to_cpu(self):
         for param in self.params():
             param.to_cpu()
+
     def to_gpu(self):
         for param in self.params():
             param.to_gpu()
     # 将parameter 作为一个扁平的、非嵌套的字典取出
-    
-    def __flatten_params(self,params_dict,parent_keys=""):
+
+    def __flatten_params(self, params_dict, parent_keys=""):
         for name in self._params:
             obj = self.__dict__[name]
-            key = parent_keys +'/' + name if parent_keys else name
-            if isinstance(obj,Layer):
-                obj.__flatten_params(params_dict,key)
+            key = parent_keys + '/' + name if parent_keys else name
+            if isinstance(obj, Layer):
+                obj.__flatten_params(params_dict, key)
             else:
                 params_dict[key] = obj
-    
-    def save_weight(self,path):
+
+    def save_weight(self, path):
         # savez只能是numpy,所以要确保数据在内存中
         self.to_cpu()
 
         params_dict = {}
         self.__flatten_params(params_dict)
         # 创建保存ndarray实例的值的字典
-        array_dict ={key:param.data for key ,param in params_dict.items() if param is not None}
+        array_dict = {key: param.data for key,
+                      param in params_dict.items() if param is not None}
         try:
-            np.savez_compressed(path,**array_dict)
-        except(Exception,KeyboardInterrupt) as e:
+            np.savez_compressed(path, **array_dict)
+        except (Exception, KeyboardInterrupt) as e:
             if os.path.exists(path):
                 os.remove(path)
             raise
 
-    def load_weights(self,path):
+    def load_weights(self, path):
         npz = np.load(path)
-        params_dict={}
+        params_dict = {}
         self.__flatten_params(params_dict)
-        for key ,param in params_dict.items():
-            param.data = npz[key]        
+        for key, param in params_dict.items():
+            param.data = npz[key]
 
 
 class Linear(Layer):
@@ -110,7 +114,7 @@ class Linear(Layer):
         else:
             self.b = Parameter(np.zeros(out_size, dtype=dtype), name='b')
 
-    def _init_W(self,xp=np):
+    def _init_W(self, xp=np):
         I, O = self.in_size, self.out_size
         W_data = xp.random.randn(I, O).astype(self.dtype) * np.sqrt(1/I)
         self.W.data = W_data
@@ -123,6 +127,7 @@ class Linear(Layer):
             self._init_W(xp)
         y = F.linear(x, self.W, self.b)
         return y
+
 
 class Conv2d(Layer):
     def __init__(self, out_channels, kernel_size, stride=1,
@@ -169,5 +174,65 @@ class Conv2d(Layer):
             xp = cuda.get_array_module(x)
             self._init_W(xp)
 
-        y = dezero.functions_conv.conv2d(x, self.W, self.b, self.stride, self.pad)
+        y = dezero.functions_conv.conv2d(
+            x, self.W, self.b, self.stride, self.pad)
         return y
+
+
+class RNN(Layer):
+    def __init__(self, hidden_size, in_size=None):
+        super().__init__()
+        self.x2h = Linear(hidden_size, in_size=in_size)
+        self.h2h = Linear(hidden_size, in_size=in_size, nobias=True)
+        self.h = None
+
+    def reset_state(self):
+        self.h = None
+
+    def forward(self, x):
+        if self.h is None:
+            h_new = F.tanh(self.x2h(x))
+        else:
+            h_new = F.tanh(self.x2h(x)+self.h2h(self.h))
+        self.h = h_new
+        return h_new
+
+class LSTM(Layer):
+    def __init__(self,hidden_size,in_size=None):
+        super().__init__()
+        H, I = hidden_size, in_size
+        self.x2f = Linear(H, in_size=I)
+        self.x2i = Linear(H, in_size=I)
+        self.x2o = Linear(H, in_size=I)
+        self.x2u = Linear(H, in_size=I)
+        self.h2f = Linear(H, in_size=H, nobias=True)
+        self.h2i = Linear(H, in_size=H, nobias=True)
+        self.h2o = Linear(H, in_size=H, nobias=True)
+        self.h2u = Linear(H, in_size=H, nobias=True)
+        self.reset_state()
+
+    def reset_state(self):
+        self.h = None
+        self.c = None
+
+    def forward(self, x):
+        if self.h is None:
+            f = F.sigmoid(self.x2f(x))
+            i = F.sigmoid(self.x2i(x))
+            o = F.sigmoid(self.x2o(x))
+            u = F.tanh(self.x2u(x))
+        else:
+            f = F.sigmoid(self.x2f(x) + self.h2f(self.h))
+            i = F.sigmoid(self.x2i(x) + self.h2i(self.h))
+            o = F.sigmoid(self.x2o(x) + self.h2o(self.h))
+            u = F.tanh(self.x2u(x) + self.h2u(self.h))
+
+        if self.c is None:
+            c_new = (i * u)
+        else:
+            c_new = (f * self.c) + (i * u)
+
+        h_new = o * F.tanh(c_new)
+
+        self.h, self.c = h_new, c_new
+        return h_new
