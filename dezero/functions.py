@@ -4,8 +4,7 @@ from dezero.core import as_variable, as_array
 from dezero import utils
 from dezero import cuda
 import dezero
-
-
+from typing import Union
 
 class Sin(Function):
     def forward(self, x):
@@ -346,6 +345,34 @@ class Softmax(Function):
 
 def softmax(x, axis=1):
     return Softmax(axis)(x)
+
+
+class Cat(Function):
+    def __init__(self, axis: int = 0):
+        self.axis = axis
+
+    def forward(self, *xs: np.ndarray) -> np.ndarray:
+        xp = cuda.get_array_module(xs[0])
+        z = xp.concatenate(xs, axis=self.axis)
+        return z
+
+    def backward(self, gy: Variable) -> Union[tuple[Variable, ...], Variable]:
+        inputs = self.inputs
+        gx = []
+        start_idx = 0
+        for x in inputs:
+            end_idx = start_idx + x.shape[self.axis]
+            indices = [slice(None)] * gy.ndim
+            indices[self.axis] = slice(start_idx, end_idx)
+            gx.append(gy[tuple(indices)])
+            start_idx = end_idx
+
+        return tuple(gx)
+
+
+def cat(inputs, axis=0):
+    return Cat(axis=axis)(*inputs)
+
 
 
 class Clip(Function):
