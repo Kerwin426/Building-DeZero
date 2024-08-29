@@ -35,7 +35,18 @@ class MLP(Model):
         for l in self.layers[:-1]:
             x = self.activation(l(x))
         return self.layers[-1](x)
+class Sequential(Model):
+    def __init__(self, *layers):
+        super().__init__()
+        self.layers = []
+        for i, layer in enumerate(layers):
+            setattr(self, 'l' + str(i), layer)
+            self.layers.append(layer)
 
+    def forward(self, x):
+        for layer in self.layers:
+            x = layer(x)
+        return x
 
 class VGG16(Model):
     WEIGHTS_PATH = 'https://github.com/koki0702/dezero-models/releases/download/v0.1/vgg16.npz'

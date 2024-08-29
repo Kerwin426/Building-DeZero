@@ -1,9 +1,9 @@
 import numpy as np
-from functions import Function ,reshape,cat,matual,softmax,dropout,mean_squared_error
+from functions import Function ,reshape,cat,matual,softmax,dropout,mean_squared_error,stack
 from typing import Union ,Literal,Callable
-from layers import Linear ,Parameter,Layer
+from layers import Linear ,Parameter,Layer,Embedding
 import json
-from models import Model,MLP
+from models import Model,MLP,Sequential
 from core import Variable 
 
 
@@ -112,6 +112,7 @@ class SelfAttention(Model):
 
         # 启用kv cache
         if self.enable_kv_cache:
+            # 这里的0 是序列长度，内存中已经存储的键值对的数量
             self.k_cache =  Variable(np.zeros([self.max_batch_size,self.num_key_value_heads,0,self.head_dim]))
             self.v_cache = Variable(np.zeros([self.max_batch_size, self.num_key_value_heads, 0, self.head_dim]))
             if self.use_gpu:
@@ -195,6 +196,148 @@ class SwiGLUFeedForwardNetwork(Model):
         x = silu(self.fc_gate(x))
         x = x*x1
         x = self.fc_down(x)
+        return x
+
+
+class RoPELlama:
+    def __init__(self,max_len:int,output_dim:int,rope_theta:float = 10000.0):
+        self.max_len = max_len
+        self.output_dim = output_dim
+        self.rope_theta = rope_theta
+
+        def apply(q:Variable,cos_pos:np.ndarray,sin_pos:np.ndarray):
+            # (-q[...,1::2],q[...,::2]) 前面是负奇数后面是偶数
+            q2 = stack((-q[...,1::2],q[...,::2]),axis=-1)
+            q2 = q2.reshape(q.shape)
+            q = q*cos_pos +q2*sin_pos
+            return q 
+        self.apply = apply
+    def get_cos_sin(self):
+        position = np.arange(0,self.max_len,dtype=np.float32)[...,np.newaxis]
+        ids = np.arange(0,self.output_dim//2,dtype= np.float32)
+        theta  = self.rope_theta ** (-2* ids /self.output_dim)
+        embeddings = position*theta
+        embeddings = np.stack([np.sin(embeddings),np.cos(embeddings)],axis=-1)
+        # *([1]*len(embeddings.shape))shape长度的list 然后解包 tile是平铺
+        embeddings =  np.tile(embeddings,(1,1,*([1]*len(embeddings.shape))))
+        embeddings = np.reshape(embeddings,(1,1,self.max_len,self.output_dim))
+        cos_pos = embeddings[...,1::2].repeat(2,axis=-1)
+        sin_pos = embeddings[...,::2].repeat(2,axis=-1)
+        return cos_pos, sin_pos
+    
+class RoPEHF:
+    def __init__(self,max_len:int,output_dim:int,rope_theta:float = 500000.0):
+        self.max_len = max_len
+        self.output_dim = output_dim
+        self.rope_theta = rope_theta
+        def apply(q:Variable,cos_pos:np.ndarray,sin_pos:np.ndarray):
+            # (-q[...,1::2],q[...,::2]) 前面是负奇数后面是偶数
+            q2 = stack((-q[...,1::2],q[...,::2]),axis=-1)
+            q2 = q2.reshape(q.shape)
+            q = q*cos_pos +q2*sin_pos
+            return q 
+        self.apply = apply
+
+    def get_cos_sin(self):
+        position = np.arange(0, self.max_len, dtype=np.float32)[..., np.newaxis]
+        ids = np.arange(0, self.output_dim // 2, dtype=np.float32)
+        theta = self.rope_theta ** (-2 * ids / self.output_dim)
+        embeddings = position * theta
+        embeddings = np.concatenate((embeddings, embeddings), axis=-1)[np.newaxis, np.newaxis, :, :]
+        cos_pos = np.cos(embeddings)
+        sin_pos = np.sin(embeddings)
+        return cos_pos, sin_pos
+    
+
+
+class TransformerDecoderBlock(Model):
+    def __init__(self,args:'LLaMaArgs',rope_apply:Callable):
+        super(TransformerDecoderBlock,self).__init__()
+        self.max_len = args.max_len
+        self.max_batch_size = args.max_batch_size
+        self.enable_kv_cache = args.enable_kv_cache
+
+        self.hidden_size = args.hidden_size
+
+        self.num_heads = args.num_heads
+        self.head_dim = args.head_dim
+        self.num_key_value_heads = args.num_key_value_heads
+        self.attention_bias = args.attention_bias
+        self.dropout_ratio = args.dropout_ratio
+
+        self.ffn_intermediate_size = args.ffn_intermediate_size
+        self.ffn_bias = args.ffn_bias
+
+        self.rms_eps = args.rms_eps
+        self.multi_head_self_attention = SelfAttention(args=args,rope_apply=rope_apply)
+        self.ffn = SwiGLUFeedForwardNetwork(hidden_size=self.hidden_size,intermediate_size=self.ffn_intermediate_size,use_bias=self.ffn_bias)
+        self.rms_norm_1 = RMSNorm(hidden_size=self.hidden_size,eps=self.rms_eps)
+        self.rms_norm_2 = RMSNorm(hidden_size=self.hidden_size,eps=self.rms_eps)        
+        
+    def forward(self,x,cos_pos,sin_pos):
+        x = self.multi_head_self_attention(self.rms_norm_1(x),cos_pos,sin_pos)+x
+        x = self.ffn(self.rms_norm_2(x))+x
+        return x    
+
+class LLaMa(Model):
+    def __init__(self,args:'LLaMaArgs'):
+        super(LLaMa,self).__init__()
+    
+        self.max_len = args.max_len
+        self.max_batch_size = args.max_batch_size
+        self.enable_kv_cache = args.enable_kv_cache
+        self.use_gpu = args.use_gpu
+
+        self.vocab_size = args.vocab_size
+        self.num_layers = args.num_layers
+        self.hidden_size = args.hidden_size
+
+        self.num_heads = args.num_heads
+        self.head_dim = args.head_dim
+        self.num_key_value_heads = args.num_key_value_heads
+        self.attention_bias = args.attention_bias
+        self.rope_theta = args.rope_theta
+        self.dropout_ratio = args.dropout_ratio
+
+        self.ffn_intermediate_size = args.ffn_intermediate_size
+        self.ffn_bias = args.ffn_bias
+
+        self.rms_eps = args.rms_eps
+
+        self.embedding = Embedding(in_size=self.vocab_size,out_size=self.hidden_size)
+        self.rope_type = args.rope_type
+        if self.rope_type =='Llama':
+            self.rope =  RoPELlama(max_len=self.max_len,output_dim= self.head_dim,rope_theta=self.rope_theta)
+        else:
+            self.rope = RoPEHF(max_len=self.max_len,output_dim=self.head_dim,rope_theta=self.rope_theta)
+        # 生成num_layers 个transformerdecoderblock
+        self.transformers = Sequential(*[TransformerDecoderBlock(args=args,rope_apply=self.rope.apply)for _ in range(self.num_layers)])
+        self.last_rms = RMSNorm(hidden_size=self.hidden_size,eps=self.rms_eps)
+        self.linear = Linear(in_size=self.hidden_size,out_size=self.vocab_size,nobias=True)
+        self.weight_share = args.weight_share
+        if self.weight_share:
+            self.linear.W = self.embedding.W.T
+        
+        self.cos_pos ,self.sin_pos = self.rope.get_cos_sin()
+        
+        if self.use_gpu:
+            from cuda import as_cupy
+            self.cos_pos = as_cupy(self.cos_pos)
+            self.sin_pos = as_cupy(self.sin_pos)
+    def forward(self, x):
+        if self.enable_kv_cache:
+            start_pos = self.transformers.layers[0].multi_head_self_attention.k_cache.shape[2]
+        else:
+            start_pos = 0
+        now_len =x.shape[1]
+        if start_pos +now_len >=self.max_len:
+            raise "kv cache is full"
+        x = self.embedding(x)
+        # Sequential数量的layers
+        for layer in self.transformers.layers:
+            x = layer(x,self.cos_pos[:,:,start_pos:(start_pos+now_len),:],self.sin_pos[:,:,start_pos:(start_pos+now_len),:])
+        x = self.last_rms(x)
+        x = self.linear(x[:,-1,:])
         return x
 
 

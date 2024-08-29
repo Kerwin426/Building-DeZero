@@ -482,3 +482,28 @@ def dropout(x, dropout_ratio=0.5):
         return y
     else:
         return x
+
+
+# 这是自己加入的stack函数
+class Stack(Function):
+    def __init__(self, axis: int = 0):
+        self.axis = axis
+
+    def forward(self, *xs: np.ndarray) -> Union[tuple[np.ndarray, ...], np.ndarray]:
+        xp = cuda.get_array_module(xs[0])
+        self.x_shape = xs[0].shape
+        self.x_num = len(xs)
+        y = xp.stack(xs, axis=self.axis)
+        return y
+
+    def backward(self, gy: np.ndarray) -> Union[tuple[np.ndarray, ...], np.ndarray]:
+        gx = []
+        for i in range(self.x_num):
+            indices = [slice(None)] * gy.ndim
+            indices[self.axis] = slice(i, i + 1)
+            gx.append(gy[tuple(indices)].reshape(self.x_shape))
+        return tuple(gx)
+
+
+def stack(inputs, axis=0):
+    return Stack(axis=axis)(*inputs)
