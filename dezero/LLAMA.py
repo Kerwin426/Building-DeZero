@@ -4,9 +4,8 @@ from typing import Union ,Literal,Callable
 from layers import Linear ,Parameter,Layer,Embedding
 import json
 from models import Model,MLP,Sequential
-from core import Variable 
-
-
+from core import Variable, no_grad,test_mode 
+import time
 
 class Tokenizer:
     def __init__(self,model_path:str):
@@ -340,7 +339,80 @@ class LLaMa(Model):
         x = self.linear(x[:,-1,:])
         return x
 
+    def clean_kv_cache(self):
+        if self.enable_kv_cache:
+            for i in self.transformers.layers:
+                if self.use_gpu:
+                    import cupy as cp
+                    i.multi_head_self_attention.k_cache = Variable(cp.zeros((self.max_batch_size,self.num_key_value_heads,0,self.head_dim)))
+                    i.multi_head_self_attention.v_cache = Variable(cp.zeros((self.max_batch_size,self.num_key_value_heads,0,self.head_dim)))
+                else:
+                    i.multi_head_self_attention.k_cache = Variable(np.zeros((self.max_batch_size,self.num_key_value_heads,0,self.head_dim)))
+                    i.multi_head_self_attention.v_cache = Variable(np.zeros((self.max_batch_size,self.num_key_value_heads,0,self.head_dim)))
+            print('kv cache cleaned')
+        else:
+            print('kv cache is not enabled')
+    
+    def generate(self,token:np.ndarray,max_gen:int,temperature:float,top_k:int,eos_id:int = 2):
+        token_batch,token_len = token.shape
+        # 确保batch大小为1
+        assert token_batch ==1
+        # 输入序列截断到最大长度
+        if token_len >self.max_len:
+            token = token[:,(token_len-self.max_len)]
 
+        # 循环生成每个新的token
+        new_char = 0
+        for i in range(max_gen):
+            if self.enable_kv_cache:
+                if i ==0:
+                    r = self(token)
+                else:
+                    r = self(np.array([[new_char]]))
+            else:
+                r = self(token)
+            r.to_cpu()
+            if temperature ==0:
+                new_char = np.argmax(r.data)
+                new_char = int(new_char)
+            else:
+                new_r = r.data /temperature
+                r_top_k = np.argsort(-new_r)[:,top_k]
+                new_r[new_r<new_r[:,r_top_k]] = -np.inf
+                probs = softmax(new_r).data.astype(np.float64)
+                probs = probs/ probs.sum()
+                # 从probs[0] 随机抽样一次,这个函数返回一个与pvals同样长度的数组，其中只有一个元素为1，其他元素为0。这个1的位置就是被选中的token ID
+                # argmax 获得这个1的索引值 就是被选中的token的ID
+                new_char = np.argmax(np.random.multinomial(n=1,pvals=probs[0]))
+                new_char = int(new_char)
+            
+            # 将新生成的token放入到输入序列中
+            token = np.concatenate((token,np.array([[new_char]])),axis=1)
+            yield new_char
+            if new_char == eos_id:
+                break
+        return token
+    
+    # 给定prompt输入,文本实时打印
+    def chat(self,promote:str, tokenizer:Tokenizer,max_gen:int = 500,temperature:float =1.0,top_k:int = 100,bos_id:int = 2):
+        tokens = tokenizer.encode(promote,add_eos= False,add_new_bos=True,add_bos=False,add_prefix=False)
+        # 新增一个维度变成二维数组batch,tokens_len
+        tokens = np .array(tokens)[np.newaxis,...]
+        gen = ''
+        for i in self.generate(tokens,max_gen,temperature,top_k,bos_id):
+            # 直到遇到max_gen或者终止符EOS
+            if i == tokenizer.eos_id:
+                print('<eos>')
+            new_char = tokenizer.decode([i])
+            # 将当前生成的token i 解码为字符 并加入到gen中 end='' 表示不换行
+            gen += new_char
+            print(new_char,end='')
+        return gen
+
+
+
+
+        
 # 均方根层归一化 是对层归一化的改进 直接计算特征的均方根 简化步骤
 class RMSNormFunction(Function):
     def __init__(self,eps:float = 1e-6):
@@ -412,6 +484,16 @@ baby_llama_zh = LLaMaArgs(
     use_gpu=True,
 )
 
+
+class Timer:
+    def __init__(self,name:str):
+        self.name = name
+    def __enter__(self):
+        self.s = time.time()
+    def __exit__(self,exc_type,exc_val,exc_tb):
+        self.e = time.time()
+        print(f'{self.name} cost {self.e -self.s} seconds')
+
 if __name__ =='__main__':
     np.random.seed(3996)
 
@@ -422,3 +504,22 @@ if __name__ =='__main__':
         'tokenizer_path':'',
     }
     model_dict = model_dict_baby_llama_zh
+
+    with no_grad(),test_mode():
+        tokenizer = Tokenizer(model_path=model_dict['tokenizer_path'])
+        with Timer('model init'):
+            m = LLaMa(args=model_dict['args'])
+        with Timer('weights load'):
+            m.load_weights(model_dict['weight_path'])
+        if model_dict['args'].use_gpu:
+            with Timer('to gpu'):
+                m.to_gpu()
+
+    for _ in range(100):
+        test_str = input()
+        if test_str =='\\clean':
+            m.clean_kv_cache()
+            continue
+        if test_str =='\\stop':
+            break
+        m.chat(test_str,tokenizer)
