@@ -12,6 +12,18 @@ from core import Variable, no_grad,test_mode
 import time
 from dataclasses import dataclass
 
+
+
+
+"""
+https://zhuanlan.zhihu.com/p/688792019
+https://github.com/likejazz/llama3.np/tree/main
+https://aw8o2u3n233.feishu.cn/wiki/Pc7swzMMZiYnP5krcrzcHkQUn1a
+https://github.com/chenyangMl/llama2.c-zh/tree/main
+
+https://huggingface.co/datasets/shibing624/medical
+https://huggingface.co/THUDM/chatglm2-6b/tree/main
+"""
 class Tokenizer:
     def __init__(self,model_path:str):
         with open(model_path,"r",encoding="utf-8") as f:
