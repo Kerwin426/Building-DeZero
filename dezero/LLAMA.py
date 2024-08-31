@@ -1,3 +1,7 @@
+if '__file__' in globals():
+    import os, sys
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
 import numpy as np
 from functions import Function ,reshape,cat,matual,softmax,dropout,mean_squared_error,stack
 from typing import Union ,Literal,Callable
@@ -6,6 +10,7 @@ import json
 from models import Model,MLP,Sequential
 from core import Variable, no_grad,test_mode 
 import time
+from dataclasses import dataclass
 
 class Tokenizer:
     def __init__(self,model_path:str):
@@ -442,7 +447,7 @@ class RMSNorm(Layer):
 
 
 
-#dataclass
+@dataclass
 class LLaMaArgs:
     vocab_size :int = 64783
     num_layers: int = 12
@@ -500,8 +505,8 @@ if __name__ =='__main__':
     # baby llama 用的是chatglm2-6b的分词器
     model_dict_baby_llama_zh = {
         'args': baby_llama_zh,
-        'weight_path': '',
-        'tokenizer_path':'',
+        'weight_path': 'stories15M.model.npz',
+        'tokenizer_path':'tokenizer.model.np',
     }
     model_dict = model_dict_baby_llama_zh
 
