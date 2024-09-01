@@ -1,6 +1,6 @@
 # layer 作为基类出现
 from typing import Any
-from dezero.core import Parameter
+from dezero.core import Parameter,Variable
 import weakref
 import dezero.functions as F
 import numpy as np
@@ -8,7 +8,7 @@ from dezero import cuda
 import os
 from dezero.utils import pair
 import dezero.functions_conv
-
+from typing import Union
 # Layer 是 保存参数的类 这些参数继承了Variable的Parameter类
 
 
@@ -26,7 +26,7 @@ class Layer:
         super().__setattr__(name, value)
 
     # 接受输入并调用forward方法
-    def __call__(self, *inputs):
+    def __call__(self, *inputs:Union[Variable,np.ndarray]) ->Union[list[Variable],Variable]:
         outputs = self.forward(*inputs)
         if not isinstance(outputs, tuple):
             outputs = (outputs,)
@@ -95,6 +95,7 @@ class Layer:
         self.__flatten_params(params_dict)
         for key, param in params_dict.items():
             param.data = npz[key]
+            print(f'{key} loaded')
 
 
 class Linear(Layer):

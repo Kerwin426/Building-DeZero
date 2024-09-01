@@ -158,6 +158,8 @@ class SelfAttention(Model):
         if self.enable_kv_cache:
             self.k_cache =  cat((self.k_cache,k),axis=2)
             self.v_cache = cat((self.v_cache,v),axis=2)
+            k = self.k_cache
+            v = self.v_cache
         
         # 保持kv头数一致
         if self.num_heads != self.num_key_value_heads:
@@ -225,6 +227,9 @@ class RoPELlama:
             # (-q[...,1::2],q[...,::2]) 前面是负奇数后面是偶数
             q2 = stack((-q[...,1::2],q[...,::2]),axis=-1)
             q2 = q2.reshape(q.shape)
+            q.to_gpu()
+            print('q',type(q))
+            print(type(cos_pos))
             q = q*cos_pos +q2*sin_pos
             return q 
         self.apply = apply
@@ -376,7 +381,8 @@ class LLaMa(Model):
         assert token_batch ==1
         # 输入序列截断到最大长度
         if token_len >self.max_len:
-            token = token[:,(token_len-self.max_len)]
+            token = token[:,(token_len-self.max_len):]
+            token_len = self.max_len
 
         # 循环生成每个新的token
         new_char = 0
@@ -414,7 +420,7 @@ class LLaMa(Model):
     def chat(self,promote:str, tokenizer:Tokenizer,max_gen:int = 500,temperature:float =1.0,top_k:int = 100,bos_id:int = 2):
         tokens = tokenizer.encode(promote,add_eos= False,add_new_bos=True,add_bos=False,add_prefix=False)
         # 新增一个维度变成二维数组batch,tokens_len
-        tokens = np .array(tokens)[np.newaxis,...]
+        tokens = np.array(tokens)[np.newaxis,...]
         gen = ''
         for i in self.generate(tokens,max_gen,temperature,top_k,bos_id):
             # 直到遇到max_gen或者终止符EOS
@@ -531,6 +537,9 @@ if __name__ =='__main__':
         if model_dict['args'].use_gpu:
             with Timer('to gpu'):
                 m.to_gpu()
+
+    the_str = 'hello'
+    m.chat(the_str,tokenizer)
 
     for _ in range(100):
         test_str = input()

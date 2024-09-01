@@ -78,8 +78,8 @@ class Variable:
         p = str(self.data).replace('\n', '\n' + ' ' * 9)
         return 'variable(' + p + ')'
 
-    def set_creator(self, func):
-        self.creator = func
+    def set_creator(self, func:"Function"):
+        self.creator:"Function" = func
         self.generation = func.generation + 1
 
     def unchain(self):
@@ -88,15 +88,15 @@ class Variable:
     def cleargrad(self):
         self.grad = None
 
-    def backward(self, retain_grad=False, create_graph=False):
+    def backward(self, retain_grad:bool=False, create_graph=False):
         if self.grad is None:
             # 这里的xp 是np或者cp
             xp = dezero.cuda.get_array_module(self.data)
             # 之前的grad是直接用的ndarray ，现在变成了variable了
             self.grad = Variable(xp.ones_like(self.data))
 
-        funcs = []
-        seen_set = set()
+        funcs:list[Function] = []
+        seen_set:list[Function] = set()
 
         def add_func(f):
             if f not in seen_set:
@@ -106,7 +106,7 @@ class Variable:
 
         add_func(self.creator)
         while funcs:
-            f = funcs.pop()
+            f:"Function" = funcs.pop()
             gys = [output().grad for output in f.outputs]  # output is weakref
 
             # 根据enable_backprop的值来 启动或禁止反向传播
